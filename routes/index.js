@@ -135,10 +135,18 @@ module.exports = function (router) {
         }
     }
 
+    /**
+     *
+     *
+     *
+     * @param json - json document conforming to json data exchange format
+     * @param callback - function the returns id
+     */
     function doCreateRecord(json, callback) {
 
         var personDb = "lims_repo";
-       
+
+        // extra fields that should be populated with empty strings if not available
         extra_fields_checks = {
             "rejection_reason" : "",
             "who_dispatched"   : {
@@ -165,11 +173,13 @@ module.exports = function (router) {
 
         var db = "sites";
 
+        // by default the response is no id and error = true
         var result = {
             id: null,
             err: true
         };
 
+        // if a couchdb id is present update the couchdb document
          if (json._id.trim().length > 0) {
 
             couch.db(personDb, 'save', json, function (jerror, jbody) {
@@ -179,6 +189,8 @@ module.exports = function (router) {
                 result.err = false;
 
                 callback(result);
+
+                // todo: no error handling
 
             });
 
@@ -198,12 +210,14 @@ module.exports = function (router) {
 
         }
 
+        // mutex since this is a read and write operation
         if (!mutex[site]) {
 
             mutex[site] = locks.createMutex();
 
         }
 
+        // todo: mutex operation but is there a retry and what does client do if multiple fails?
         if (mutex[site].tryLock()) {
            
 
@@ -345,28 +359,43 @@ module.exports = function (router) {
 
     }
 
+    /**
+     *
+     * Perform couchdb read from NLIMS database
+     *
+     * @param id - _id of the couchdb record
+     * @param callback - process result and return http response
+     * @param format - true if should format dates
+     * @returns {{}}
+     */
     function doRead(id, callback, format) {
 
+        // if no format parameter given do not format dates
         if (format == undefined) {
 
             format = false;
 
         }
 
+        // retrieve site code from couchdb.json
         var site = JSON.parse(configs)["site_code"];
 
+        // fail if sitecode is not present
         if (!site) {
 
             return {};
 
         }
 
+        // name of the couchdb database
         var db = "lims_repo";
 
+        // perform couchdb read
         couch.db(db, 'read', {'_id': id}, function (err, pbody) {
             console.log(err);
             if (!err) {
 
+                // should we format dates
                 if (format) {
 
                     var keys = Object.keys(pbody);
@@ -433,6 +462,7 @@ module.exports = function (router) {
 
     function doReadByNPID(id, callback) {
 
+        // todo: log to file not only console, no log description
         console.log(id);
 
         var site = JSON.parse(configs)["site_code"];
@@ -445,6 +475,8 @@ module.exports = function (router) {
 
         var db = "lims_repo";
 
+
+        // uses people type and  'by_npid' view
         couch.db(db, 'view', id, function (err, pbody) {
 
             if (!err) {
@@ -454,6 +486,7 @@ module.exports = function (router) {
 
             } else {
 
+                // todo: log to file not only console, no log description
                 console.log(err);
 
                 callback({});
@@ -494,6 +527,11 @@ module.exports = function (router) {
 
     }
 
+    /**
+     *
+     * Welcome endpoint
+     *
+     */
     router.route('/')
         .get(function (req, res) {
 
@@ -501,6 +539,11 @@ module.exports = function (router) {
 
         })
 
+    /**
+     *
+     * Endpoint to create an order.
+     *
+     */
     router.route('/create_order')
         .post(function (req, res) {
            
@@ -536,6 +579,12 @@ module.exports = function (router) {
 
         })
 
+
+    /**
+     *
+     * Endpoint to retrieve order by sample id
+     *
+     */
     router.route('/query_order/:id')
         .get(function (req, res) {
 
@@ -547,6 +596,12 @@ module.exports = function (router) {
 
         })
 
+    /**
+     *
+     * Retrieve order using a http parameter
+     * id - the sample id of the order
+     *
+     */
     router.route('/query_order')
         .get(function (req, res) {
 
@@ -562,6 +617,11 @@ module.exports = function (router) {
 
         })
 
+    /**
+     *
+     * Endpoint to retrieve order by NPID
+     *
+     */
     router.route('/query_order_by_npid/:id')
         .get(function (req, res) {
 
@@ -573,6 +633,12 @@ module.exports = function (router) {
 
         })
 
+    /**
+     *
+     * Endpoint to update an order i.e., add results
+     * json exchange document is in body
+     *
+     */
     router.route('/update_order')
         .post(function (req, res) {
             var params = req.body;    
@@ -634,6 +700,12 @@ module.exports = function (router) {
           
         })
 
+    /**
+     *
+     * Endpoint to create a lab order formatted to json exchange format using url parameters
+     *
+     *
+     */
     router.route('/lab_order')
         .get(function (req, res) {
 
@@ -690,6 +762,12 @@ module.exports = function (router) {
 
         })
 
+
+    /**
+     *
+     * Endpoint to retrieve enumeration of sample types
+     *
+     */
     router.route('/sample_tests/:id')
         .get(function (req, res) {
 
@@ -706,6 +784,12 @@ module.exports = function (router) {
 
         })
 
+    /**
+     *
+     *
+     * Endpoint to create HL7 formatted order using json exchange document and send to mirth via http
+     *
+     */
     router.route('/create_hl7_order')
         .post(function (req, res) {
 
@@ -716,6 +800,8 @@ module.exports = function (router) {
                 params = params.data;
 
             }
+
+            //todo: appears to be little validation of the fields for which we have specified specific enumerated values NEED THIS
 
             var template = "MSH|^~&||^^||^^|||OML^O21^OML_O21||T|2.5\r" +
                 "PID|1||~^^^^^^||^^|||||||||||||\r" +
@@ -1015,6 +1101,8 @@ module.exports = function (router) {
                             "receiving_facility": params.target_lab,
                             "reason_for_test": params.reason_for_test,
                             "test_types": params.tests,
+
+                            // todo:  should not default to drawn - check for valid values report error if null
                             "status": (params.status || "Drawn"),
                             "district": params.district,
                             "priority": params.sample_priority,
@@ -1037,8 +1125,13 @@ module.exports = function (router) {
 
             });
 
-        });          
+        });
 
+    /**
+     *
+     * Endpoint to generate code for a formatted label
+     *
+     */
     router.route('/print/:id')
         .get(function (req, res) {
 
@@ -1110,6 +1203,11 @@ module.exports = function (router) {
         });
 
 
+    /**
+     *
+     * Endpoint to print a label using jade template
+     *
+     */
     router.route('/print')
         .get(function (req, res) {
 
@@ -1121,6 +1219,14 @@ module.exports = function (router) {
 
         });
 
+
+    /**
+     *
+     * Endpoint to retrieve results using specimen id in url
+     * parameters:
+     *  id - specimen id
+     *
+     */
     router.route('/query_results/:id')
         .get(function (req, res) {
 
@@ -1130,6 +1236,7 @@ module.exports = function (router) {
 
                     console.log(result);
 
+                    // todo: return a response that is more informative
                     res.status(200).json({});
 
                     return;
@@ -1138,6 +1245,7 @@ module.exports = function (router) {
 
                 var results = {};
 
+                // iterate over the results and make a new object that just contains results
                 for (var i = 0; i < result.test_types.length; i++) {
 
                     if (!result.results[result.test_types[i]]) {
@@ -1146,6 +1254,7 @@ module.exports = function (router) {
 
                     }
 
+                    // todo: result.test_types[i]]).sort() is sorting every iteration wasting time
                     var timestamps = Object.keys(result.results[result.test_types[i]]).sort();
 
                     results[result.test_types[i]] = {};
@@ -1154,6 +1263,8 @@ module.exports = function (router) {
 
                 }
 
+
+                // todo: this is more of a debug statement
                 console.log(JSON.stringify(results));
 
                 // Overwrite the rest of the results with our selected set only
